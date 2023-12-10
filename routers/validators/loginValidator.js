@@ -14,6 +14,6 @@ module.exports = [
     .withMessage("Please fill out password.")
     .notEmpty()
     .withMessage("Password can not be empty.")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters long."),
+    .isLength({ min: 5 })
+    .withMessage("Password must be at least 5 characters long."),
 ];

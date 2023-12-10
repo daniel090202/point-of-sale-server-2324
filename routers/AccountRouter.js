@@ -1,12 +1,12 @@
-const express = require("express");
 const bcrypt = require("bcrypt");
+const express = require("express");
 const jwt = require("jsonwebtoken");
 
 const Router = express.Router();
 
-const { validationResult } = express("express-validator");
-const registerValidator = require("./validators/registerValidator");
+const { validationResult } = require("express-validator");
 const loginValidator = require("./validators/loginValidator");
+const registerValidator = require("./validators/registerValidator");
 
 const Account = require("../models/AccountModel");
 
@@ -17,7 +17,7 @@ Router.get("/", (request, response) => {
   });
 });
 
-Router.get("/login", loginValidator, (request, response) => {
+Router.post("/login", loginValidator, async (request, response) => {
   let result = validationResult(request);
   const messages = result.mapped();
 
@@ -26,54 +26,48 @@ Router.get("/login", loginValidator, (request, response) => {
   if (result.errors.length === 0) {
     const { email, password } = request.body;
 
-    Account.findOne({
-      email: email,
-    })
-      .then((account) => {
-        if (!account) {
-          throw new Error("Email does not exist.");
-        }
+    const account = await Account.findOne({ email: email });
 
-        return bcrypt.compare(password, account.password);
-      })
-      .then((passwordMatched) => {
-        if (!passwordMatched) {
-          return response.status(401).json({
-            code: 3,
-            message: "Log in failed. Password incorrect.",
-          });
-        }
-
-        const { JWT_SECRET } = process.env;
-
-        jwt.sign(
-          {
-            email: account.email,
-            fullName: account.fullName,
-          },
-          JWT_SECRET,
-          {
-            expiresIn: "1h",
-          },
-          (error, token) => {
-            if (error) {
-              throw new Error(error);
-            }
-
-            return response.status(200).json({
-              code: 0,
-              message: "Successfully log in.",
-              token: token,
-            });
-          }
-        );
-      })
-      .catch((error) => {
-        return response.status(401).json({
-          code: 2,
-          message: "Log in failed: " + error.message,
-        });
+    if (!account) {
+      return response.status(401).json({
+        code: 2,
+        message: "Account not found.",
       });
+    }
+
+    const passwordMatched = bcrypt.compare(password, account.password);
+
+    if (!passwordMatched) {
+      return response.status(401).json({
+        code: 3,
+        message: "Log in failed. Password incorrect.",
+      });
+    }
+
+    const { JWT_SECRET } = process.env;
+
+    jwt.sign(
+      {
+        email: account.email,
+        fullName: account.fullName,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "1h",
+      },
+      (error, token) => {
+        if (error) {
+          throw new Error(error);
+        }
+
+        return response.status(200).json({
+          code: 0,
+          message: "Successfully log in.",
+          token: token,
+          account: account,
+        });
+      }
+    );
   } else {
     for (const message in messages) {
       notification = messages[message].msg;
@@ -87,14 +81,15 @@ Router.get("/login", loginValidator, (request, response) => {
   }
 });
 
-Router.get("/register", registerValidator, (request, response) => {
+Router.post("/register", registerValidator, (request, response) => {
   const result = validationResult(request);
   const messages = result.mapped();
 
   let notification = "";
 
   if (result.errors.length === 0) {
-    const { email, password, fullName } = request.body;
+    const { email, password, fullName, age, phone, gender, address, status } =
+      request.body;
 
     Account.findOne({
       email: email,
@@ -110,6 +105,11 @@ Router.get("/register", registerValidator, (request, response) => {
           email: email,
           password: hashed,
           fullName: fullName,
+          age: age,
+          phone: phone,
+          gender: gender,
+          address: address,
+          status: status,
         });
 
         return user.save();
@@ -138,5 +138,11 @@ Router.get("/register", registerValidator, (request, response) => {
     });
   }
 });
+
+Router.post("/change-password", (request, response) => {});
+
+Router.post("/update-profile", (request, response) => {});
+
+Router.get("/signout", (request, response) => {});
 
 module.exports = Router;
