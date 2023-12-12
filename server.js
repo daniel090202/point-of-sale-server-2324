@@ -28,6 +28,7 @@ app.use(
 app.use(bodyParser.urlencoded({ extended: false }));
 
 app.use("/account", AccountRouter);
+app.use("/product", ProductRouter);
 
 app.get("/", (request, response) => {});
 
