@@ -1,5 +1,5 @@
 require("dotenv").config();
-const cors = require('cors');
+const cors = require("cors");
 const express = require("express");
 const mongoose = require("mongoose");
 const flash = require("express-flash");
@@ -13,7 +13,7 @@ const fetch = (...args) =>
 const OrderRouter = require("./routers/OrderRouter");
 const ProductRouter = require("./routers/ProductRouter");
 const AccountRouter = require("./routers/AccountRouter");
-
+const CustomerRouter = require("./routers/CustomerRouter");
 
 const app = express();
 
@@ -27,8 +27,10 @@ app.use(
 );
 app.use(bodyParser.urlencoded({ extended: false }));
 
+app.use("/order", OrderRouter);
 app.use("/account", AccountRouter);
 app.use("/product", ProductRouter);
+app.use("/customer", CustomerRouter);
 
 app.get("/", (request, response) => {});
 

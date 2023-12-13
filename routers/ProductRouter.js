@@ -132,7 +132,7 @@ Router.post("/update", addProductValidator, async (request, response) => {
         message: "Product not found.",
       });
     } else {
-      const isUpdated = await Product.updateOne(
+      await Product.updateOne(
         { barcode: barcode },
         {
           $set: {

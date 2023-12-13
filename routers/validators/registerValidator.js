@@ -14,5 +14,5 @@ module.exports = [
     .notEmpty()
     .withMessage("Full name can not be empty.")
     .isLength({ min: 5 })
-    .withMessage("Full name must be at least 6 characters long."),
+    .withMessage("Full name must be at least 5 characters long."),
 ];
