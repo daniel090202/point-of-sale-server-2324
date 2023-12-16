@@ -5,6 +5,7 @@ const { validationResult } = require("express-validator");
 const addProductValidator = require("./validators/addProductValidator");
 
 const Product = require("../models/ProductModel");
+const OrderDetail = require("../models/OrderDetailsModel");
 
 Router.get("/", async (request, response) => {
   const products = await Product.find(
@@ -33,6 +34,35 @@ Router.get("/", async (request, response) => {
     message: "List of products.",
     data: products,
   });
+});
+
+Router.delete("/", async (request, response) => {
+  try {
+    const { id } = request.query;
+
+    const ordersDetails = await OrderDetail.find({});
+    const product = await Product.findOne({ barcode: id });
+
+    for (const orderDetail of ordersDetails) {
+
+      if (product._id.toString() == orderDetail.productID) {
+        return response.status(401).json({
+          code: 1,
+          message: "Product can not be deleted.",
+        });
+      }
+    }
+
+    return response.status(200).json({
+      code: 0,
+      message: "Delete successfully.",
+    });
+  } catch (error) {
+    return response.status(500).json({
+      code: 0,
+      message: error.message,
+    });
+  }
 });
 
 Router.post("/add", addProductValidator, (request, response) => {

@@ -1,3 +1,5 @@
+const path = require("path");
+const multer = require("multer");
 const bcrypt = require("bcrypt");
 const express = require("express");
 const jwt = require("jsonwebtoken");
@@ -10,9 +12,28 @@ const loginValidator = require("./validators/loginValidator");
 const registerValidator = require("./validators/registerValidator");
 const changePasswordValidator = require("./validators/changePasswordValidator");
 
+const generateTokens = require("../utils/generateTokens");
+const mailer = require("../utils/generateMailTransporter");
+const userAuth = require("../middlewares/userAuth.middleware");
+
 const Account = require("../models/AccountModel");
 
-Router.get("/", async (request, response) => {
+const storage = multer.diskStorage({
+  destination: (request, file, cb) => {
+    cb(null, "public/Images");
+  },
+  filename: (request, file, cb) => {
+    cb(
+      null,
+      file.fieldname + "_" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// GET ALL USERS
+Router.get("/all-users", userAuth.verifyToken, async (request, response) => {
   const accounts = await Account.find(
     {},
     {
@@ -25,71 +46,150 @@ Router.get("/", async (request, response) => {
       gender: 1,
       address: 1,
       status: 1,
+      active: 1,
     }
   );
 
   return response.json({
     code: 0,
-    message: "List of accounts.",
+    message: "All users.",
     data: accounts,
   });
 });
 
-Router.get("/change-status", async (request, response) => {
-  const { email, status } = request.query;
+Router.get(
+  "/resend/:userEmail",
+  userAuth.verifyTokenAndAdminAuth,
+  async (request, response) => {
+    const { email } = request.query;
 
-  const account = await Account.findOne({ email: email });
+    const account = await Account.findOne({ email: email });
 
-  if (!account) {
-    return response.json({
-      code: 2,
-      message: "Account not found.",
+    if (!account) {
+      return response.json({
+        code: 1,
+        message: "User does not exist.",
+      });
+    }
+
+    const port = process.env.CLIENT_PORT || 3000;
+    const url = `http://localhost:${port}`;
+
+    const activeToken = generateTokens.generateActiveToken(account);
+
+    const emailConfirmationTemplate = `<a href="${url}/signIn?token=${activeToken}">Verify</a>`;
+
+    mailer.sendMail(account.email, "Verify Email", emailConfirmationTemplate);
+
+    return response.status(200).json({
+      code: 0,
+      message: "Successfully resend.",
     });
   }
+);
 
-  if (status === account.status) {
+// GET USER THROUGH EMAIL
+Router.get(
+  "/:userEmail",
+  userAuth.verifyTokenAndAdminAuth,
+  async (request, response) => {
+    const { email } = request.query;
+
+    const account = await Account.findOne({ email: email });
+
+    if (!account) {
+      return response.json({
+        code: 1,
+        message: "User does not exist.",
+      });
+    }
+
     return response.json({
       code: 1,
-      message: "Same status.",
+      message: "User found.",
+      data: {
+        account: account,
+      },
     });
-  } else {
+  }
+);
+
+Router.get(
+  "/archive/:userEmail",
+  userAuth.verifyTokenAndAdminAuth,
+  async (request, response) => {
+    const { email } = request.query;
+
+    const account = await Account.findOne({ email: email });
+
+    if (!account) {
+      return response.json({
+        code: 1,
+        message: "User does not exist.",
+      });
+    }
+
     await Account.updateOne(
       { email: email },
       {
         $set: {
-          status: status,
+          status: 2,
         },
       }
     );
 
-    const data = await Account.findOne(
+    return response.json({
+      code: 1,
+      message: "User has been archived.",
+    });
+  }
+);
+
+Router.get(
+  "/activate/:userEmail",
+  userAuth.verifyTokenAndAdminAuth,
+  async (request, response) => {
+    const { email } = request.query;
+
+    const account = await Account.findOne({ email: email });
+
+    if (!account) {
+      return response.json({
+        code: 1,
+        message: "User does not exist.",
+      });
+    }
+
+    await Account.updateOne(
       { email: email },
       {
-        attributeToSelect: 1,
-        _id: 0,
-        fullName: 1,
-        email: 1,
-        age: 1,
-        phone: 1,
-        gender: 1,
-        address: 1,
-        status: 1,
+        $set: {
+          status: 1,
+        },
       }
     );
 
-    if (status === 1) {
-      return response.json({
-        code: 0,
-        data: data,
-        message: "Account archived.",
-      });
-    } else {
-      return response.json({
-        code: 0,
-        data: data,
-        message: "Account activated.",
-      });
-    }
+    return response.json({
+      code: 1,
+      message: "User has been activated.",
+    });
+  }
+);
+
+Router.delete("/:id", async (request, response) => {
+  try {
+    const { id } = request.params;
+    const user = await Account.findOneAndDelete(id);
+
+    return response.status(200).json({
+      code: 0,
+      message: "Delete successfully.",
+    });
+  } catch (error) {
+    return response.status(500).json({
+      code: 0,
+      message: error.message,
+    });
   }
 });
 
@@ -100,50 +200,66 @@ Router.post("/login", loginValidator, async (request, response) => {
   let notification = "";
 
   if (result.errors.length === 0) {
+    const token = request.headers.token;
     const { email, password } = request.body;
 
-    const account = await Account.findOne({ email: email });
+    if (token) {
+      const activeToken = token.split(" ")[1];
+      const { JWT_ACTIVE_KEY } = process.env;
 
-    if (!account) {
-      return response.json({
-        code: 2,
-        message: "Account not found.",
-      });
-    }
-
-    const passwordMatched = await bcrypt.compare(password, account.password);
-
-    if (!passwordMatched) {
-      return response.json({
-        code: 3,
-        message: "Log in failed. Password incorrect.",
-      });
-    }
-
-    const { JWT_SECRET } = process.env;
-
-    jwt.sign(
-      {
-        email: account.email,
-        fullName: account.fullName,
-      },
-      JWT_SECRET,
-      {
-        expiresIn: "1h",
-      },
-      (error, token) => {
+      jwt.verify(activeToken, JWT_ACTIVE_KEY, async (error, payload) => {
         if (error) {
-          throw new Error(error);
+          return response.status(403).json({
+            code: 1,
+            message: error.message,
+          });
         }
+
+        const account = await Account.findOne({ email: payload.email });
+
+        const accessToken = generateTokens.generateAccessToken(account);
+        const refreshToken = generateTokens.generateRefreshToken(account);
+
+        response.cookie("refreshToken", refreshToken);
 
         return response.status(200).json({
           code: 0,
-          message: "Successfully log in.",
-          token: token,
           account: account,
+          accessToken: accessToken,
+          message: "Successfully login.",
+        });
+      });
+    } else {
+      const account = await Account.findOne({ email: email });
+
+      if (!account) {
+        return response.status(404).json({
+          code: 1,
+          message: "User does not exist.",
         });
       }
-    );
+
+      const isValid = await bcrypt.compare(password, account.password);
+
+      if (!isValid) {
+        return response.status(500).json({
+          code: 2,
+          message: "Failed to login",
+        });
+      }
+      // SIGN TOKENS FOR EACH USER WHEN SIGN IN
+      const accessToken = generateTokens.generateAccessToken(account);
+      const refreshToken = generateTokens.generateRefreshToken(account);
+
+      response.cookie("refreshToken", refreshToken);
+
+      return response.status(200).json({
+        code: 0,
+        account: account,
+        accessToken: accessToken,
+        message: "Successfully login.",
+      });
+    }
   } else {
     for (const message in messages) {
       notification = messages[message].msg;
@@ -167,15 +283,15 @@ Router.post("/register", registerValidator, async (request, response) => {
     const { email, fullName, age, phone, gender, address } = request.body;
 
     const username = email.split("@")[0];
-    const password = await bcrypt.hash(username, 10);
-    const status = "1";
+    const salt = await bcrypt.genSalt(10);
+    const password = await bcrypt.hash(username, salt);
 
     const account = await Account.findOne({ email: email });
 
     if (account) {
       return response.status(401).json({
         code: 2,
-        message: "Account already exists.",
+        message: "User already exists.",
       });
     } else {
       const user = new Account({
@@ -186,10 +302,18 @@ Router.post("/register", registerValidator, async (request, response) => {
         gender: gender,
         address: address,
         password: password,
-        status: status,
       });
 
       user.save();
+
+      const port = process.env.CLIENT_PORT || 3000;
+      const url = `http://localhost:${port}`;
+
+      const activeToken = generateTokens.generateActiveToken(user);
+
+      const emailConfirmationTemplate = `<a href="${url}/signIn?token=${activeToken}">Verify</a>`;
+
+      mailer.sendMail(user.email, "Verify Email", emailConfirmationTemplate);
 
       return response.status(200).json({
         code: 0,
@@ -202,60 +326,102 @@ Router.post("/register", registerValidator, async (request, response) => {
       break;
     }
 
-    return response.json({
+    return response.status(500).json({
       code: 1,
       message: notification,
     });
   }
 });
 
-Router.post("/update", registerValidator, async (request, response) => {
-  const result = validationResult(request);
-  const messages = result.mapped();
+Router.post("/refresh", async (request, response) => {
+  const refreshToken = request.cookies.refreshToken;
 
-  let notification = "";
+  if (!refreshToken) {
+    return response.status(401).json({
+      code: 1,
+      message: "Users are not authenticated.",
+    });
+  }
 
-  if (result.errors.length === 0) {
-    const { email, fullName, age, phone, gender, address } = request.body;
+  const { JWT_REFRESH_KEY } = process.env;
 
-    const account = await Account.findOne({ email: email });
-
-    if (!account) {
+  jwt.verify(refreshToken, JWT_REFRESH_KEY, (error, account) => {
+    if (error) {
       return response.status(401).json({
-        code: 2,
-        message: "Account not found.",
+        code: 1,
+        message: "Refresh token is not valid.",
       });
     } else {
-      const isUpdated = await Account.updateOne(
-        { email: email },
-        {
-          $set: {
-            fullName: fullName,
-            age: age,
-            phone: phone,
-            gender: gender,
-            address: address,
-          },
-        }
-      );
+      const newAccessToken = generateTokens.generateAccessToken(account);
+      const newRefreshToken = generateTokens.generateRefreshToken(account);
+
+      response.cookie("refreshToken", newRefreshToken);
 
       return response.status(200).json({
         code: 0,
-        message: "Account updated.",
+        account: account,
+        accessToken: newAccessToken,
+        message: "Successfully refresh.",
       });
     }
-  } else {
-    for (const message in messages) {
-      notification = messages[message].msg;
-      break;
-    }
-
-    return response.json({
-      code: 1,
-      message: notification,
-    });
-  }
+  });
 });
+
+Router.post(
+  "/update",
+  upload.single("file"),
+  registerValidator,
+  async (request, response) => {
+    const result = validationResult(request);
+    const messages = result.mapped();
+
+    let notification = "";
+
+    if (result.errors.length === 0) {
+      const { email, fullName, age, phone, gender, address } = request.body;
+
+      const fileName = request.file.filename;
+
+      const account = await Account.findOne({ email: email });
+
+      if (!account) {
+        return response.status(401).json({
+          code: 2,
+          message: "Account not found.",
+        });
+      } else {
+        await Account.updateOne(
+          { email: email },
+          {
+            $set: {
+              fullName: fullName,
+              age: age,
+              phone: phone,
+              gender: gender,
+              address: address,
+              avatar: fileName,
+            },
+          }
+        );
+
+        return response.status(200).json({
+          code: 0,
+          message: "Account updated.",
+        });
+      }
+    } else {
+      for (const message in messages) {
+        notification = messages[message].msg;
+        break;
+      }
+
+      return response.json({
+        code: 1,
+        message: notification,
+      });
+    }
+  }
+);
 
 Router.post(
   "/change-password",
@@ -279,17 +445,25 @@ Router.post(
           message: "Account not found.",
         });
       } else {
-        const isUpdated = await Account.updateOne(
+        await Account.updateOne(
           { email: email },
           {
             $set: {
               password: hashedPassword,
+              active: true,
             },
           }
         );
 
+        const accessToken = generateTokens.generateAccessToken(account);
+        const refreshToken = generateTokens.generateRefreshToken(account);
+
+        response.cookie("refreshToken", refreshToken);
+
         return response.status(200).json({
           code: 0,
+          account: account,
+          accessToken: accessToken,
           message: "Password updated.",
         });
       }
@@ -306,5 +480,14 @@ Router.post(
     }
   }
 );
+
+Router.post("/logout", userAuth.verifyToken, (request, response) => {
+  response.clearCookie("refreshToken");
+
+  return response.status(200).json({
+    code: 0,
+    message: "Successfully logout.",
+  });
+});
 
 module.exports = Router;

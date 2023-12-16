@@ -10,6 +10,11 @@ const OrderModel = new Schema(
       ref: "Customer",
       required: true,
     },
+    accountID: {
+      type: String,
+      ref: "Account",
+      required: true,
+    },
     total: {
       type: Number,
       required: true,

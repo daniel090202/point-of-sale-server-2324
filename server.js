@@ -17,22 +17,21 @@ const CustomerRouter = require("./routers/CustomerRouter");
 
 const app = express();
 
-app.use(cors());
 app.use(flash());
-app.use(cookieParser("mvm"));
-app.use(
-  session({
-    cookie: { maxAge: 6000 },
-  })
-);
+app.use(cookieParser());
+// app.use(
+//   session({
+//     cookie: { maxAge: 6000 },
+//   })
+// );
+app.use(express.static("public"));
 app.use(bodyParser.urlencoded({ extended: false }));
+app.use(cors({ credentials: true, origin: "http://localhost:3000" }));
 
 app.use("/order", OrderRouter);
 app.use("/account", AccountRouter);
 app.use("/product", ProductRouter);
 app.use("/customer", CustomerRouter);
-
-app.get("/", (request, response) => {});
 
 const port = process.env.PORT || 8080;
 

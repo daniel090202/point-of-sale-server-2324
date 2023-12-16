@@ -3,11 +3,9 @@ const { check } = require("express-validator");
 module.exports = [
   check("email")
     .exists()
-    .withMessage("Please fill out email address.")
+    .withMessage("Please fill out username.")
     .notEmpty()
-    .withMessage("Email address can not be empty.")
-    .isEmail()
-    .withMessage("Invalid email address"),
+    .withMessage("Username can not be empty."),
 
   check("password")
     .exists()
