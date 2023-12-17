@@ -191,8 +191,12 @@ Router.get("/details", async (request, response) => {
   const orderDetails = [];
 
   for (const orderDetail of order.orderDetails) {
+    const targetOrderDetail = await OrderDetails.findOne({
+      _id: orderDetail._id,
+    });
+
     const product = await Product.findOne({
-      _id: orderDetail.productID.toString(),
+      _id: targetOrderDetail.productID.toString(),
     });
 
     orderDetails.push({

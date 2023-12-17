@@ -32,31 +32,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// GET ALL USERS
-Router.get("/all-users", userAuth.verifyToken, async (request, response) => {
-  const accounts = await Account.find(
-    {},
-    {
-      attributeToSelect: 1,
-      _id: 0,
-      fullName: 1,
-      email: 1,
-      age: 1,
-      phone: 1,
-      gender: 1,
-      address: 1,
-      status: 1,
-      active: 1,
-    }
-  );
-
-  return response.json({
-    code: 0,
-    message: "All users.",
-    data: accounts,
-  });
-});
-
 Router.get(
   "/resend/:userEmail",
   userAuth.verifyTokenAndAdminAuth,
@@ -87,6 +62,30 @@ Router.get(
     });
   }
 );
+
+Router.get("/all-users", userAuth.verifyToken, async (request, response) => {
+  const accounts = await Account.find(
+    {},
+    {
+      attributeToSelect: 1,
+      _id: 0,
+      fullName: 1,
+      email: 1,
+      age: 1,
+      phone: 1,
+      gender: 1,
+      address: 1,
+      status: 1,
+      active: 1,
+    }
+  );
+
+  return response.json({
+    code: 0,
+    message: "All users.",
+    data: accounts,
+  });
+});
 
 // GET USER THROUGH EMAIL
 Router.get(
@@ -302,6 +301,7 @@ Router.post("/register", registerValidator, async (request, response) => {
         gender: gender,
         address: address,
         password: password,
+        status: 1,
       });
 
       user.save();
